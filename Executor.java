@@ -2,13 +2,14 @@ import java.util.Arrays;
 
 class Executor {
 
-    private static final boolean debug = false;
+    private static final boolean debug = true;
     private static final int SUDOKU_VALUE = 45;
     private int[] tempNumbers = new int[9];
     private int tempData;
     private int tempRow;
     private int tempColumn;
     private int[][] tempBlocks = new int[3][3];
+    private int[][] blockIdentifications = new int[9][4];
     private int[] tempValues = new int[2];
     private boolean goFurther = false;
     private boolean isOne = false;
@@ -17,6 +18,7 @@ class Executor {
     private int[][][][] sudoku = new int[9][9][2][];
 
     Executor(int[][] sudoku) {
+        setBlockIdentifications();
         addDataToSudoku();
         addValuesToSudoku(sudoku);
         goSudoku();
@@ -58,6 +60,8 @@ class Executor {
 
             findExcludedValuesUsingColumn();
             findExcludedValuesUsingRow();
+
+            findClosedPairs();
         } while (goFurther);
     }
 
@@ -475,7 +479,7 @@ class Executor {
                                 if (!isOne) break;
                             }
                             if (isOne) {
-                                columnIsOne(i,column,j);
+                                columnIsOne(i, column, j);
                             }
                         }
                     }
@@ -484,7 +488,7 @@ class Executor {
         }
     }
 
-    private void columnIsOne(int i, int column, int j){
+    private void columnIsOne(int i, int column, int j) {
         goFurther = true;
         sudoku[i][column][0][0] = sudoku[i][column][1][j];
         minimizePossibleValuesInColumn(i);
@@ -596,6 +600,265 @@ class Executor {
         }
     }
 
+    private void setBlockIdentifications() {
+        int[] ids = new int[]{0, 3, 0, 3};
+        for (int i = 0; i < 9; i++, ids[2] += 3, ids[3] += 3) {
+            if (i != 0 && i % 3 == 0) {
+                ids[0] += 3;
+                ids[1] += 3;
+            }
+            if (ids[2] > 6) {
+                ids[2] = 0;
+                ids[3] = 3;
+            }
+            System.arraycopy(ids, 0, blockIdentifications[i], 0, 4);
+        }
+    }
+
+    private void findClosedPairs() {
+        for (int block = 0; block < 9; block++) {
+            checkBlocksForClosedPairsInRow(block);
+            checkBlocksForClosedPairsInColumn(block);
+        }
+    }
+
+    private void checkBlocksForClosedPairsInRow(int block) {
+        boolean isStartColumn;
+        boolean isEndColumn;
+        if (block == 0 || block == 3 || block == 6) {
+            isStartColumn = true;
+            isEndColumn = false;
+        } else if (block == 1 || block == 4 || block == 7) {
+            isStartColumn = false;
+            isEndColumn = false;
+        } else {
+            isStartColumn = false;
+            isEndColumn = true;
+        }
+        closedPairsBlockIdentifierInRow(
+                blockIdentifications[block][0],
+                blockIdentifications[block][1],
+                blockIdentifications[block][2],
+                blockIdentifications[block][3],
+                isStartColumn, isEndColumn);
+    }
+
+    private void closedPairsBlockIdentifierInRow
+            (int startRow, int endRow, int startColumn, int endColumn,
+             boolean isStartColumn, boolean isEndColumn) {
+        zerosInTempNumbers();
+        for (int i = startRow; i < endRow; i++) {
+            fillArrWithPossibleValuesInRowInBlock(i, startColumn, endColumn);
+            excludeFromArrPossibleValuesInOtherRowsOfBlock(i, startRow, endRow, startColumn, endColumn);
+            excludeOtherRowValuesFromClosedPairs(i, isStartColumn, isEndColumn);
+            deleteOutOfClosedPairsInRow(i, startColumn, endColumn);
+        }
+    }
+
+    private void zerosInTempNumbers() {
+        for (int i = 0; i < 9; i++) {
+            tempNumbers[i] = 0;
+        }
+    }
+
+    private void fillArrWithPossibleValuesInRowInBlock
+            (int row, int startColumn, int endColumn) {
+        for (int j = startColumn; j < endColumn; j++) {
+            if (sudoku[row][j][0][0] == 0) {
+                for (int k = 0; k < 9; k++) {
+                    if (sudoku[row][j][1][k] != 0) {
+                        tempNumbers[k] = sudoku[row][j][1][k];
+                    }
+                }
+            }
+        }
+    }
+
+    private void excludeFromArrPossibleValuesInOtherRowsOfBlock
+            (int i, int startRow, int endRow, int startColumn, int endColumn) {
+        for (int k = startRow; k < endRow; k++) {
+            if (i != k) {
+                for (int l = startColumn; l < endColumn; l++) {
+                    if (sudoku[k][l][0][0] == 0) {
+                        for (int m = 0; m < 9; m++) {
+                            if (sudoku[k][l][1][m] != 0) {
+                                tempNumbers[m] = 0;
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    private void excludeOtherRowValuesFromClosedPairs(int row, boolean isStartColumn, boolean isEndColumn) {
+        int startColumn = 0;
+        int endColumn = 9;
+        boolean isMiddleColumn = false;
+        if (isStartColumn) startColumn = 3;
+        else if (isEndColumn) endColumn = 6;
+        else isMiddleColumn = true;
+        for (int k = startColumn; k < endColumn; k++) {
+            if (isMiddleColumn && k == 3) k = 6;
+            if (sudoku[row][k][0][0] == 0) {
+                for (int m = 0; m < 9; m++) {
+                    if (sudoku[row][k][1][m] != 0) {
+                        tempNumbers[m] = 0;
+                    }
+                }
+            }
+        }
+    }
+
+    private void deleteOutOfClosedPairsInRow(int row, int startColumn, int endColumn) {
+        tempData = 0;
+        int amountOfMatchedValues = 0;
+        for (int j = 0; j < 9; j++) {
+            if (tempNumbers[j] != 0) tempData++;
+        }
+        for (int j = startColumn; j < endColumn; j++) {
+            if (sudoku[row][j][0][0] == 0) {
+                for (int k = 0; k < 9; k++) {
+                    if (tempNumbers[k] != 0 && sudoku[row][j][1][k] != 0) {
+                        amountOfMatchedValues++;
+                        break;
+                    }
+                }
+            }
+        }
+        if (tempData == amountOfMatchedValues
+                && tempData != 0 && amountOfMatchedValues != 1) {
+            for (int j = startColumn; j < endColumn; j++) {
+                if (sudoku[row][j][0][0] == 0) {
+                    for (int k = 0; k < 9; k++) {
+                        if (tempNumbers[k] == 0 && sudoku[row][j][1][k] != 0) {
+                            if (debug)
+                                System.out.println("(closed row) deleted value " + sudoku[row][j][1][k] + " [" + row + "; " + j + "]");
+                            sudoku[row][j][1][k] = 0;
+                            goFurther = true;
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+
+    private void checkBlocksForClosedPairsInColumn(int block) {
+        boolean isStartRow;
+        boolean isEndRow;
+        if (block < 3) {
+            isStartRow = true;
+            isEndRow = false;
+        } else if (block < 6) {
+            isStartRow = false;
+            isEndRow = false;
+        } else {
+            isStartRow = false;
+            isEndRow = true;
+        }
+        closedPairsBlockIdentifierInColumn(
+                blockIdentifications[block][0],
+                blockIdentifications[block][1],
+                blockIdentifications[block][2],
+                blockIdentifications[block][3],
+                isStartRow, isEndRow);
+    }
+
+    private void closedPairsBlockIdentifierInColumn
+            (int startRow, int endRow, int startColumn, int endColumn,
+             boolean isStartRow, boolean isEndRow) {
+        zerosInTempNumbers();
+        for (int i = startColumn; i < endColumn; i++) {
+            fillArrWithPossibleValuesInColumnInBlock(i, startRow, endRow);
+            excludeFromArrPossibleValuesInOtherColumnsOfBlock(i, startRow, endRow, startColumn, endColumn);
+            excludeOtherColumnValuesFromClosedPairs(i, isStartRow, isEndRow);
+            deleteOutOfClosedPairsInColumn(i, startRow, endRow);
+        }
+    }
+
+    private void fillArrWithPossibleValuesInColumnInBlock
+            (int column, int startRow, int endRow) {
+        for (int j = startRow; j < endRow; j++) {
+            if (sudoku[j][column][0][0] == 0) {
+                for (int k = 0; k < 9; k++) {
+                    if (sudoku[j][column][1][k] != 0) {
+                        tempNumbers[k] = sudoku[j][column][1][k];
+                    }
+                }
+            }
+        }
+    }
+
+    private void excludeFromArrPossibleValuesInOtherColumnsOfBlock
+            (int i, int startRow, int endRow, int startColumn, int endColumn) {
+        for (int k = startColumn; k < endColumn; k++) {
+            if (i != k) {
+                for (int l = startRow; l < endRow; l++) {
+                    if (sudoku[l][k][0][0] == 0) {
+                        for (int m = 0; m < 9; m++) {
+                            if (sudoku[l][k][1][m] != 0) {
+                                tempNumbers[m] = 0;
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    private void excludeOtherColumnValuesFromClosedPairs(int column, boolean isStartRow, boolean isEndRow) {
+        int startRow = 0;
+        int endRow = 9;
+        boolean isMiddleRow = false;
+        if (isStartRow) startRow = 3;
+        else if (isEndRow) endRow = 6;
+        else isMiddleRow = true;
+        for (int k = startRow; k < endRow; k++) {
+            if (isMiddleRow && k == 3) k = 6;
+            if (sudoku[k][column][0][0] == 0) {
+                for (int m = 0; m < 9; m++) {
+                    if (sudoku[k][column][1][m] != 0) {
+                        tempNumbers[m] = 0;
+                    }
+                }
+            }
+        }
+    }
+
+    private void deleteOutOfClosedPairsInColumn(int column, int startRow, int endRow) {
+        tempData = 0;
+        int amountOfMatchedValues = 0;
+        for (int j = 0; j < 9; j++) {
+            if (tempNumbers[j] != 0) tempData++;
+        }
+        for (int j = startRow; j < endRow; j++) {
+            if (sudoku[j][column][0][0] == 0) {
+                for (int k = 0; k < 9; k++) {
+                    if (tempNumbers[k] != 0 && sudoku[j][column][1][k] != 0) {
+                        amountOfMatchedValues++;
+                        break;
+                    }
+                }
+            }
+        }
+        if (tempData == amountOfMatchedValues
+                && tempData != 0 && amountOfMatchedValues != 1) {
+            for (int j = startRow; j < endRow; j++) {
+                if (sudoku[j][column][0][0] == 0) {
+                    for (int k = 0; k < 9; k++) {
+                        if (tempNumbers[k] == 0 && sudoku[j][column][1][k] != 0) {
+                            if (debug)
+                                System.out.println("(closed column) deleted value " + sudoku[j][column][1][k] + " [" + j + "; " + column + "]");
+                            sudoku[j][column][1][k] = 0;
+                            goFurther = true;
+                        }
+                    }
+                }
+            }
+        }
+    }
+
     private void findOpenPairsInRows() {
         for (int row = 0; row < 9; row++) {
             for (int column1 = 0; column1 < 9; column1++) {
@@ -612,7 +875,8 @@ class Executor {
         }
     }
 
-    private void checkAmountOfPossibleValuesInRowInOpenPairs(int row, int column1, int column2) {
+    private void checkAmountOfPossibleValuesInRowInOpenPairs
+            (int row, int column1, int column2) {
         tempData = 0;
         tempValues[0] = 0;
         tempValues[1] = 0;
@@ -631,7 +895,8 @@ class Executor {
         }
     }
 
-    private void deletePossibleValuesOutOfBlockWithOpenPairsGottenFromRow(int row, int column1, int column2) {
+    private void deletePossibleValuesOutOfBlockWithOpenPairsGottenFromRow
+            (int row, int column1, int column2) {
         if (column1 < 3 && column2 < 3
                 || column1 > 2 && column2 > 2 && column1 < 6 && column2 < 6
                 || column1 > 5 && column2 > 5 && column1 < 9 && column2 < 9) {
@@ -666,7 +931,9 @@ class Executor {
         }
     }
 
-    private void deleteUnnecessaryValuesInBlockGottenFromRow(int startRow, int endRow, int startColumn, int endColumn, int row, int column1, int column2) {
+    private void deleteUnnecessaryValuesInBlockGottenFromRow
+            (int startRow, int endRow, int startColumn, int endColumn,
+             int row, int column1, int column2) {
         for (int value : tempValues) {
             for (int i = startRow; i < endRow; i++) {
                 for (int j = startColumn; j < endColumn; j++) {
@@ -691,7 +958,8 @@ class Executor {
         }
     }
 
-    private void deletePossibleValuesOutOfRowWithOpenPairsGottenFromRow(int row, int column1, int column2) {
+    private void deletePossibleValuesOutOfRowWithOpenPairsGottenFromRow
+            (int row, int column1, int column2) {
         for (int value : tempValues) {
             for (int k = 0; k < 9; k++) {
                 if (k != column1 && k != column2) {
@@ -724,7 +992,8 @@ class Executor {
         }
     }
 
-    private void checkAmountOfPossibleValuesInColumnInOpenPairs(int column, int row1, int row2) {
+    private void checkAmountOfPossibleValuesInColumnInOpenPairs
+            (int column, int row1, int row2) {
         tempData = 0;
         tempValues[0] = 0;
         tempValues[1] = 0;
@@ -743,7 +1012,8 @@ class Executor {
         }
     }
 
-    private void deletePossibleValuesOutOfBlockWithOpenPairsGottenFromColumn(int column, int row1, int row2) {
+    private void deletePossibleValuesOutOfBlockWithOpenPairsGottenFromColumn
+            (int column, int row1, int row2) {
         if (row1 < 3 && row2 < 3
                 || row1 > 2 && row2 > 2 && row1 < 6 && row2 < 6
                 || row1 > 5 && row2 > 5 && row1 < 9 && row2 < 9) {
@@ -778,7 +1048,9 @@ class Executor {
         }
     }
 
-    private void deleteUnnecessaryValuesInBlockGottenFromColumn(int startRow, int endRow, int startColumn, int endColumn, int column, int row1, int row2) {
+    private void deleteUnnecessaryValuesInBlockGottenFromColumn
+            (int startRow, int endRow, int startColumn, int endColumn,
+             int column, int row1, int row2) {
         for (int value : tempValues) {
             for (int j = startColumn; j < endColumn; j++) {
                 for (int i = startRow; i < endRow; i++) {
@@ -792,7 +1064,8 @@ class Executor {
         }
     }
 
-    private void deleteUnnecessaryValueInBlockGottenFromColumn(int i, int j, int value) {
+    private void deleteUnnecessaryValueInBlockGottenFromColumn
+            (int i, int j, int value) {
         for (int m = 0; m < sudoku[i][j][1].length; m++) {
             if (sudoku[i][j][1][m] == value) {
                 if (debug)
@@ -803,7 +1076,8 @@ class Executor {
         }
     }
 
-    private void deletePossibleValuesOutOfColumnWithOpenPairs(int column, int row1, int row2) {
+    private void deletePossibleValuesOutOfColumnWithOpenPairs
+            (int column, int row1, int row2) {
         for (int value : tempValues) {
             for (int k = 0; k < 9; k++) {
                 if (k != row1 && k != row2) {
@@ -842,7 +1116,8 @@ class Executor {
         }
     }
 
-    private void checkBlockForExistingValuesInBlockColumn(int startRow, int endRow, int startColumn, int endColumn) {
+    private void checkBlockForExistingValuesInBlockColumn
+            (int startRow, int endRow, int startColumn, int endColumn) {
         /*fill list of possible values in column of block*/
         for (int j = startColumn; j < endColumn; j++) {
             for (int i = 0; i < 9; i++) {
@@ -955,7 +1230,8 @@ class Executor {
         }
     }
 
-    private void checkBlockForExistingValuesInBlockRow(int startRow, int endRow, int startColumn, int endColumn) {
+    private void checkBlockForExistingValuesInBlockRow
+            (int startRow, int endRow, int startColumn, int endColumn) {
         /*fill list of possible values in row of block*/
         for (int j = startRow; j < endRow; j++) {
             for (int i = 0; i < 9; i++) {
